@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="fi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Yhteistyön Essence</title>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body>
+    <div id="root"></div>
+    
+    <script type="text/babel"> import React, { useState, useEffect, useCallback } from 'react';
+
+const CollaborativeEssence = () => {
+  const [nodes, setNodes] = useState([]);
+  const [connections, setConnections] = useState([]);
+  const [time, setTime] = useState(0);
+  const [clusters, setClusters] = useState([]);
+
+  const colors = ['#002C74', '#81D600', '#00AEB2', '#009EFF', '#FF7D00', '#FFD400', '#EC017F', '#820084'];
+
+  // Luo solmuja orgaanisesti
+  const createNode = useCallback((x, y, clusterId = null) => {
+    return {
+      id: Math.random().toString(36).substr(2, 9),
+      x: x || Math.random() * window.innerWidth,
+      y: y || Math.random() * window.innerHeight,
+      targetX: x || Math.random() * window.innerWidth,
+      targetY: y || Math.random() * window.innerHeight,
+      size: 20 + Math.random() * 40,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      opacity: 0.1 + Math.random() * 0.6,
+      clusterId,
+      energy: Math.random(),
+      phase: Math.random() * Math.PI * 2,
+      birthTime: Date.now(),
+      influence: Math.random() * 0.5 + 0.3,
+      type: Math.random() > 0.7 ? 'catalyst' : 'thought'
+    };
+  }, []);
+
+  // Orgaaninen klusterointi
+  const formCluster = useCallback(() => {
+    const centerX = 200 + Math.random() * (window.innerWidth - 400);
+    const centerY = 200 + Math.random() * (window.innerHeight - 400);
+    const clusterId = Math.random().toString(36).substr(2, 9);
+    const clusterNodes = [];
+
+    // Luo 3-8 solmua klusteriin
+    const nodeCount = 3 + Math.floor(Math.random() * 6);
+    for (let i = 0; i < nodeCount; i++) {
+      const angle = (Math.PI * 2 * i) / nodeCount + Math.random() * 0.5;
+      const distance = 50 + Math.random() * 100;
+      const nodeX = centerX + Math.cos(angle) * distance;
+      const nodeY = centerY + Math.sin(angle) * distance;
+      
+      clusterNodes.push(createNode(nodeX, nodeY, clusterId));
+    }
+
+    setClusters(prev => [...prev, {
+      id: clusterId,
+      centerX,
+      centerY,
+      energy: 1,
+      birthTime: Date.now()
+    }]);
+
+    return clusterNodes;
+  }, [createNode]);
+
+  // Gravitaatio ja vuorovaikutus
+  const calculateForces = useCallback((nodes) => {
+    return nodes.map(node => {
+      let forceX = 0;
+      let forceY = 0;
+
+      // Orgaaninen liike
+      const timeInfluence = time * 0.002;
+      forceX += Math.sin(timeInfluence + node.phase) * 0.2;
+      forceY += Math.cos(timeInfluence + node.phase * 1.3) * 0.15;
+
+      // Klusterikeskuksen vetovoima
+      if (node.clusterId) {
+        const cluster = clusters.find(c => c.id === node.clusterId);
+        if (cluster) {
+          const dx = cluster.centerX - node.x;
+          const dy = cluster.centerY - node.y;
+          const distance = Math.sqrt(dx * dx + dy * dy);
+          if (distance > 0) {
+            forceX += (dx / distance) * 0.1 * cluster.energy;
+            forceY += (dy / distance) * 0.1 * cluster.energy;
+          }
+        }
+      }
+
+      // Solmujen välinen vuorovaikutus
+      nodes.forEach(other => {
+        if (other.id !== node.id) {
+          const dx = other.x - node.x;
+          const dy = other.y - node.y;
+          const distance = Math.sqrt(dx * dx + dy * dy);
+          
+          if (distance > 0 && distance < 200) {
+            // Heikko vetovoima lähellä olevia solmuja kohtaan
+            const attraction = (200 - distance) / 200 * 0.02;
+            forceX += (dx / distance) * attraction * node.influence * other.influence;
+            forceY += (dy / distance) * attraction * node.influence * other.influence;
+          }
+        }
+      });
+
+      // Seinien pehmeä torjunta
+      const margin = 100;
+      if (node.x < margin) forceX += (margin - node.x) * 0.001;
+      if (node.x > window.innerWidth - margin) forceX -= (node.x - (window.innerWidth - margin)) * 0.001;
+      if (node.y < margin) forceY += (margin - node.y) * 0.001;
+      if (node.y > window.innerHeight - margin) forceY -= (node.y - (window.innerHeight - margin)) * 0.001;
+
+      return {
+        ...node,
+        targetX: node.x + forceX,
+        targetY: node.y + forceY
+      };
+    });
+  }, [time, clusters]);
+
+  // Yhteyksien muodostaminen
+  const updateConnections = useCallback((nodes) => {
+    const newConnections = [];
+    
+    for (let i = 0; i < nodes.length; i++) {
+      for (let j = i + 1; j < nodes.length; j++) {
+        const node1 = nodes[i];
+        const node2 = nodes[j];
+        const dx = node1.x - node2.x;
+        const dy = node1.y - node2.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        // Yhteys muodostuu etäisyyden ja vaikutuksen perusteella
+        if (distance < 180 && (node1.influence + node2.influence) > 0.8) {
+          const strength = Math.max(0.1, 1 - distance / 180) * (node1.influence + node2.influence) / 2;
+          
+          newConnections.push({
+            id: `${node1.id}-${node2.id}`,
+            from: node1.id,
+            to: node2.id,
+            strength,
+            distance,
+            pulse: Math.sin(time * 0.003 + distance * 0.01) * 0.5 + 0.5,
+            color: distance < 100 ? '#6366f1' : '#a855f7'
+          });
+        }
+      }
+    }
+    
+    setConnections(newConnections);
+  }, [time]);
+
+  // Pääanimaatiosilmukka
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTime(prev => prev + 1);
+
+      // Luo uusia solmuja orgaanisesti
+      if (Math.random() < 0.015 && nodes.length < 35) {
+        if (Math.random() < 0.3 && clusters.length < 5) {
+          // Luo uusi klusteri
+          const newClusterNodes = formCluster();
+          setNodes(prev => [...prev, ...newClusterNodes]);
+        } else {
+          // Luo yksittäinen solmu
+          setNodes(prev => [...prev, createNode()]);
+        }
+      }
+
+      // Päivitä solmut
+      setNodes(prev => {
+        const withForces = calculateForces(prev);
+        
+        return withForces.map(node => {
+          // Sileä liike kohti tavoitetta
+          const newX = node.x + (node.targetX - node.x) * 0.1;
+          const newY = node.y + (node.targetY - node.y) * 0.1;
+          
+          // Orgaaninen elämänsykli
+          const age = Date.now() - node.birthTime;
+          const maxAge = 30000 + Math.random() * 20000; // 30-50 sekuntia
+          const lifePhase = age / maxAge;
+          
+          let newOpacity = node.opacity;
+          if (lifePhase > 0.8) {
+            // Häivytys lopussa
+            newOpacity = node.opacity * (1 - (lifePhase - 0.8) / 0.2);
+          }
+
+          return {
+            ...node,
+            x: newX,
+            y: newY,
+            opacity: Math.max(0.1, newOpacity),
+            energy: 0.3 + 0.7 * Math.sin(time * 0.001 + node.phase),
+            size: node.size * (0.9 + 0.2 * Math.sin(time * 0.002 + node.phase * 2))
+          };
+        }).filter(node => {
+          const age = Date.now() - node.birthTime;
+          const maxAge = 30000 + Math.random() * 20000;
+          return age < maxAge;
+        });
+      });
+
+      // Päivitä klusterit
+      setClusters(prev => prev.map(cluster => {
+        const age = Date.now() - cluster.birthTime;
+        const energy = Math.max(0.1, 1 - age / 40000); // Hiipuu 40 sekunnissa
+        
+        return {
+          ...cluster,
+          energy
+        };
+      }).filter(cluster => {
+        const age = Date.now() - cluster.birthTime;
+        return age < 50000; // Poistetaan 50 sekunnin jälkeen
+      }));
+
+    }, 50);
+
+    return () => clearInterval(interval);
+  }, [nodes.length, clusters.length, calculateForces, createNode, formCluster]);
+
+  // Päivitä yhteydet
+  useEffect(() => {
+    updateConnections(nodes);
+  }, [nodes, updateConnections]);
+
+  return (
+    <div className="w-full h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-indigo-900 overflow-hidden relative">
+      
+      {/* Taustaverkko - hienovarainen */}
+      <div className="absolute inset-0 opacity-5">
+        <svg width="100%" height="100%">
+          <defs>
+            <pattern id="subtleGrid" width="60" height="60" patternUnits="userSpaceOnUse">
+              <path d="M 60 0 L 0 0 0 60" fill="none" stroke="#ffffff" strokeWidth="0.5"/>
+            </pattern>
+          </defs>
+          <rect width="100%" height="100%" fill="url(#subtleGrid)" />
+        </svg>
+      </div>
+
+      {/* Yhteydet */}
+      <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{zIndex: 1}}>
+        <defs>
+          <filter id="glow">
+            <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+            <feMerge> 
+              <feMergeNode in="coloredBlur"/>
+              <feMergeNode in="SourceGraphic"/>
+            </feMerge>
+          </filter>
+        </defs>
+        
+        {connections.map(connection => {
+          const fromNode = nodes.find(n => n.id === connection.from);
+          const toNode = nodes.find(n => n.id === connection.to);
+          
+          if (!fromNode || !toNode) return null;
+          
+          const opacity = connection.strength * connection.pulse * 0.6;
+          
+          return (
+            <g key={connection.id}>
+              <line
+                x1={fromNode.x}
+                y1={fromNode.y}
+                x2={toNode.x}
+                y2={toNode.y}
+                stroke={connection.color}
+                strokeWidth={connection.strength * 2}
+                opacity={opacity}
+                filter="url(#glow)"
+              />
+              
+              {/* Virtaava energia yhteydessä */}
+              <circle
+                cx={fromNode.x + (toNode.x - fromNode.x) * connection.pulse}
+                cy={fromNode.y + (toNode.y - fromNode.y) * connection.pulse}
+                r={2}
+                fill={connection.color}
+                opacity={opacity * 1.5}
+              />
+            </g>
+          );
+        })}
+      </svg>
+
+      {/* Solmut */}
+      {nodes.map(node => (
+        <div key={node.id} className="absolute pointer-events-none" style={{zIndex: 2}}>
+          {/* Sisäkehä */}
+          <div
+            className="absolute rounded-full"
+            style={{
+              left: node.x - node.size / 2,
+              top: node.y - node.size / 2,
+              width: node.size,
+              height: node.size,
+              backgroundColor: node.color,
+              opacity: node.opacity * node.energy,
+              boxShadow: `0 0 ${node.size}px ${node.color}40`,
+              transition: 'all 0.3s ease'
+            }}
+          />
+          
+          {/* Ulkokehä - katalysaattoreille */}
+          {node.type === 'catalyst' && (
+            <div
+              className="absolute rounded-full border-2"
+              style={{
+                left: node.x - node.size * 0.7,
+                top: node.y - node.size * 0.7,
+                width: node.size * 1.4,
+                height: node.size * 1.4,
+                borderColor: node.color,
+                opacity: node.opacity * 0.3 * node.energy,
+                animation: `pulse 3s infinite ease-in-out`
+              }}
+            />
+          )}
+        </div>
+      ))}
+
+      {/* Klusterien keskukset - hienovarainen glow */}
+      {clusters.map(cluster => (
+        <div
+          key={cluster.id}
+          className="absolute pointer-events-none"
+          style={{
+            left: cluster.centerX - 5,
+            top: cluster.centerY - 5,
+            width: 10,
+            height: 10,
+            background: `radial-gradient(circle, rgba(255,255,255,${cluster.energy * 0.3}) 0%, transparent 70%)`,
+            borderRadius: '50%',
+            zIndex: 0
+          }}
+        />
+      ))}
+
+      <style jsx>{`
+        @keyframes pulse {
+          0%, 100% { transform: scale(1); opacity: 0.3; }
+          50% { transform: scale(1.1); opacity: 0.1; }
+        }
+      `}</style>
+    </div>
+  );
+};
+ </script>
+</body>
+</html>
